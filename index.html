@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Racer Fullscreen</title>
+    <style>
+        /* Убираем отступы и фиксированную высоту у body, чтобы он не сжимал контент */
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            /* Убрали display: flex и justify-content, чтобы canvas мог занять весь экран */
+            font-family: 'Courier New', monospace;
+            overflow: hidden; /* Скрываем полосы прокрутки */
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* ГЛАВНОЕ ИЗМЕНЕНИЕ: Растягиваем игровой холст на весь экран */
+        canvas {
+            display: block !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1; /* Игра на заднем плане относительно UI */
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            pointer-events: none; /* Чтобы клики проходили сквозь текст к игре */
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+            width: 100%;
+        }
+
+        #game-over-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none; /* Скрыто по умолчанию */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20; /* Поверх игры и UI */
+        }
+
+        h1 { color: #ff3333; font-size: 48px; margin: 0 0 20px 0; text-transform: uppercase; }
+        
+        button {
+            padding: 15px 50px;
+            font-size: 20px;
+            background: #33cc33;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            border-radius: 5px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #33ff33; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        СЧЕТ: <span id="scoreEl">0</span> | СКОРОСТЬ: <span id="speedEl">1.0x</span>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>АВАРИЯ!</h1>
+        <p style="font-size: 24px;">Счет: <span id="finalScoreEl">0</span></p>
+        <button onclick="restartGame()">ИГРАТЬ СНОВА</button>
+    </div>
+
+    <!-- Подключаем твою игру -->
+    <script src="game.js"></script>
+
+    <!-- СКРИПТ-ФИКС: Принудительно растягивает игру, если в game.js стоят малые размеры -->
+    <script>
+        // Ждем загрузки страницы
+        window.addEventListener('load', () => {
+            // Находим канвас, созданный Phaser
+            const canvas = document.querySelector('canvas');
+            
+            if (canvas && window.gameInstance) {
+                // Заставляем Phaser изменить размер под окно браузера
+                window.gameInstance.scale.resize(window.innerWidth, window.innerHeight);
+                
+                // Если в game.js режим масштаба не настроен, этот код поможет подстроиться
+                window.gameInstance.scale.setZoom(1); 
+            }
+
+            // Обработка изменения размера окна (если пользователь меняет размер браузера)
+            window.addEventListener('resize', () => {
+                if (window.gameInstance) {
+                    window.gameInstance.scale.resize(window.innerWidth, window.innerHeight);
+                }
+            });
+        });
+
+        // Функция перезапуска (если её нет в game.js)
+        function restartGame() {
+            document.getElementById('game-over-screen').style.display = 'none';
+            if (window.gameInstance) {
+                // Пытаемся перезапустить сцену, предполагая, что она называется 'Main' или 'Default'
+                // Если у тебя другая логика в game.js, этот блок можно удалить оттуда
+                const sceneKey = window.gameInstance.scene.getScenes(true)[0].scene.key;
+                window.gameInstance.scene.restart(sceneKey);
+            } else {
+                location.reload(); // Фоллбэк: просто перезагрузить страницу
+            }
+        }
+    </script>
+</body>
+</html>
