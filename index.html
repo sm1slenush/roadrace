@@ -2,124 +2,572 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Racer Fullscreen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Street Racer — ночная гонка</title>
     <style>
-        /* Убираем отступы и фиксированную высоту у body, чтобы он не сжимал контент */
-        body {
+        * {
             margin: 0;
             padding: 0;
-            background: #222;
-            /* Убрали display: flex и justify-content, чтобы canvas мог занять весь экран */
-            font-family: 'Courier New', monospace;
-            overflow: hidden; /* Скрываем полосы прокрутки */
-            width: 100vw;
-            height: 100vh;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* ГЛАВНОЕ ИЗМЕНЕНИЕ: Растягиваем игровой холст на весь экран */
+        body {
+            background: #0a0f0d;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+        }
+
         canvas {
             display: block !important;
-            width: 100vw !important;
-            height: 100vh !important;
+            width: 100% !important;
+            height: 100% !important;
             position: absolute;
             top: 0;
             left: 0;
-            z-index: 1; /* Игра на заднем плане относительно UI */
         }
 
-        #ui-layer {
-            position: absolute;
+        /* Верхняя панель — ЧЕТКОЕ ОТОБРАЖЕНИЕ СЧЕТА И МНОЖИТЕЛЯ */
+        #ui {
+            position: fixed;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: white;
-            font-size: 24px;
-            text-align: center;
-            pointer-events: none; /* Чтобы клики проходили сквозь текст к игре */
-            text-shadow: 2px 2px 0 #000;
-            z-index: 10;
-            width: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            padding: 12px 32px;
+            border-radius: 60px;
+            color: #ffdd88;
+            font-size: 1.8rem;
+            font-weight: bold;
+            font-family: 'Courier New', 'Monaco', monospace;
+            z-index: 20;
+            white-space: nowrap;
+            border: 2px solid rgba(255, 200, 80, 0.9);
+            letter-spacing: 2px;
+            pointer-events: none;
+            text-shadow: 0 0 8px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        
+        /* Дополнительное выделение цифр */
+        #ui span {
+            color: #ffaa33;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 0 0 5px #ff8800;
+            margin: 0 4px;
         }
 
-        #game-over-screen {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: none; /* Скрыто по умолчанию */
+        .touch-zone {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 30;
+            gap: 28px;
+            pointer-events: none;
+        }
+
+        .touch-btn {
+            width: 76px;
+            height: 76px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            pointer-events: auto;
+            cursor: pointer;
+            border: 2px solid rgba(255, 200, 80, 0.9);
+            transition: 0.04s linear;
+        }
+
+        .touch-btn:active {
+            transform: scale(0.9);
+            background: #ffaa33cc;
+        }
+
+        @media (max-width: 600px) {
+            .touch-btn { width: 70px; height: 70px; font-size: 44px; }
+            #ui { font-size: 1.3rem; padding: 8px 20px; }
+            #ui span { font-size: 1.5rem; }
+        }
+
+        .pc-hint {
+            position: fixed;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.55);
+            padding: 4px 14px;
+            border-radius: 32px;
+            font-size: 12px;
+            color: #aaa;
+            pointer-events: none;
+            z-index: 25;
+        }
+
+        @media (max-width: 700px) {
+            .pc-hint { display: none; }
+        }
+
+        /* ЭКРАН КОНЦА ИГРЫ — ПРОЗРАЧНЫЙ ФОН */
+        #gameover {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.55);  /* Прозрачный фон (было 0.95) */
+            backdrop-filter: blur(4px);       /* Легкое размытие для читаемости */
+            display: none;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            z-index: 100;
             color: white;
-            z-index: 20; /* Поверх игры и UI */
+            font-family: 'Courier New', monospace;
         }
 
-        h1 { color: #ff3333; font-size: 48px; margin: 0 0 20px 0; text-transform: uppercase; }
-        
-        button {
-            padding: 15px 50px;
-            font-size: 20px;
-            background: #33cc33;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-family: inherit;
-            border-radius: 5px;
-            transition: background 0.2s;
+        #gameover h1 {
+            font-size: 62px;
+            color: #ff5555;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px rgba(255,0,0,0.5);
+            background: rgba(0,0,0,0.5);
+            padding: 10px 30px;
+            border-radius: 80px;
+            backdrop-filter: blur(4px);
         }
-        button:hover { background: #33ff33; }
+
+        #gameover p {
+            font-size: 36px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            padding: 16px 40px;
+            border-radius: 80px;
+            margin-bottom: 35px;
+            border: 1px solid rgba(255,200,80,0.6);
+            font-weight: bold;
+        }
+        
+        #gameover p span {
+            color: #ffaa33;
+            font-size: 48px;
+            text-shadow: 0 0 8px #ff8800;
+        }
+
+        #gameover button {
+            font-size: 32px;
+            padding: 16px 52px;
+            background: #2ecc2e;
+            border: none;
+            border-radius: 80px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.1s linear;
+            box-shadow: 0 6px 0 #1a6b1a;
+            font-family: monospace;
+        }
+        
+        #gameover button:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #1a6b1a;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 </head>
 <body>
-
-    <div id="ui-layer">
-        СЧЕТ: <span id="scoreEl">0</span> | СКОРОСТЬ: <span id="speedEl">1.0x</span>
+    <div id="ui">🏆 <span id="scoreDisplay">0</span> &nbsp;⚡ <span id="speedDisplay">1.0</span>x</div>
+    <div class="touch-zone">
+        <div class="touch-btn" id="btnLeft">◀</div>
+        <div class="touch-btn" id="btnRight">▶</div>
+    </div>
+    <div class="pc-hint">← →  или  A / D</div>
+    <div id="gameover">
+        <h1>💥 CRASH</h1>
+        <p>ОЧКИ: <span id="finalScoreSpan">0</span></p>
+        <button id="restartButton">🏁 ЕЩЁ РАЗ</button>
     </div>
 
-    <div id="game-over-screen">
-        <h1>АВАРИЯ!</h1>
-        <p style="font-size: 24px;">Счет: <span id="finalScoreEl">0</span></p>
-        <button onclick="restartGame()">ИГРАТЬ СНОВА</button>
-    </div>
-
-    <!-- Подключаем твою игру -->
-    <script src="game.js"></script>
-
-    <!-- СКРИПТ-ФИКС: Принудительно растягивает игру, если в game.js стоят малые размеры -->
     <script>
-        // Ждем загрузки страницы
-        window.addEventListener('load', () => {
-            // Находим канвас, созданный Phaser
-            const canvas = document.querySelector('canvas');
+        (function(){
+            // ---------- НАСТРОЙКИ ----------
+            const LANES = 3;
+            let gameInstance = null;
+            let isRunning = true;
+            let score = 0;
+            let gameSpeed = 320;
+            let leftActive = false;
+            let rightActive = false;
             
-            if (canvas && window.gameInstance) {
-                // Заставляем Phaser изменить размер под окно браузера
-                window.gameInstance.scale.resize(window.innerWidth, window.innerHeight);
-                
-                // Если в game.js режим масштаба не настроен, этот код поможет подстроиться
-                window.gameInstance.scale.setZoom(1); 
-            }
-
-            // Обработка изменения размера окна (если пользователь меняет размер браузера)
-            window.addEventListener('resize', () => {
-                if (window.gameInstance) {
-                    window.gameInstance.scale.resize(window.innerWidth, window.innerHeight);
+            // Параметры разметки
+            const STRIP_H = 70;      // высота белой полоски
+            const STRIP_GAP = 50;    // промежуток между полосками
+            const CYCLE = STRIP_H + STRIP_GAP; // 120px
+            
+            // ---------- СЦЕНА PHASER ----------
+            class GameScene extends Phaser.Scene {
+                constructor() {
+                    super('GameScene');
+                    this.linesGroup = null;
+                    this.roadLeftX = 0;
+                    this.roadRightX = 0;
+                    this.laneW = 0;
+                    this.linePairs = []; // храним пары линий для синхронного движения
                 }
-            });
-        });
-
-        // Функция перезапуска (если её нет в game.js)
-        function restartGame() {
-            document.getElementById('game-over-screen').style.display = 'none';
-            if (window.gameInstance) {
-                // Пытаемся перезапустить сцену, предполагая, что она называется 'Main' или 'Default'
-                // Если у тебя другая логика в game.js, этот блок можно удалить оттуда
-                const sceneKey = window.gameInstance.scene.getScenes(true)[0].scene.key;
-                window.gameInstance.scene.restart(sceneKey);
-            } else {
-                location.reload(); // Фоллбэк: просто перезагрузить страницу
+                
+                preload() {
+                    // Машина игрока
+                    const pCar = this.make.graphics();
+                    pCar.fillStyle(0xdd3355);
+                    pCar.fillRect(0, 0, 42, 72);
+                    pCar.fillStyle(0x222222);
+                    pCar.fillRect(6, 18, 30, 16);
+                    pCar.fillStyle(0xffdd99);
+                    pCar.fillRect(8, 6, 8, 8);
+                    pCar.fillRect(26, 6, 8, 8);
+                    pCar.fillStyle(0xcccccc);
+                    pCar.fillRect(4, 64, 8, 6);
+                    pCar.fillRect(30, 64, 8, 6);
+                    pCar.generateTexture('playerTex', 42, 72);
+                    
+                    // Машина врага
+                    const eCar = this.make.graphics();
+                    eCar.fillStyle(0x3388ff);
+                    eCar.fillRect(0, 0, 42, 72);
+                    eCar.fillStyle(0x1a1a2e);
+                    eCar.fillRect(6, 44, 30, 16);
+                    eCar.fillStyle(0xcc4444);
+                    eCar.fillRect(8, 60, 8, 6);
+                    eCar.fillRect(26, 60, 8, 6);
+                    eCar.fillStyle(0xaaaaaa);
+                    eCar.fillRect(4, 68, 6, 4);
+                    eCar.fillRect(32, 68, 6, 4);
+                    eCar.generateTexture('enemyTex', 42, 72);
+                    
+                    // Текстура линии разметки
+                    const lineGfx = this.make.graphics();
+                    lineGfx.fillStyle(0xffffff);
+                    lineGfx.fillRect(0, 0, 8, STRIP_H);
+                    lineGfx.fillStyle(0xffffee, 0.5);
+                    lineGfx.fillRect(1, 0, 6, STRIP_H);
+                    lineGfx.generateTexture('lineTex', 8, STRIP_H);
+                }
+                
+                create() {
+                    isRunning = true;
+                    score = 0;
+                    gameSpeed = 320;
+                    this.updateUI();
+                    document.getElementById('gameover').style.display = 'none';
+                    this.linePairs = [];
+                    
+                    const w = this.scale.width;
+                    const h = this.scale.height;
+                    const roadW = Math.min(w * 0.8, 500);
+                    const roadX = (w - roadW) / 2;
+                    this.laneW = roadW / LANES;
+                    
+                    this.roadData = {
+                        x: roadX,
+                        w: roadW,
+                        laneW: this.laneW,
+                        leftBound: roadX,
+                        rightBound: roadX + roadW
+                    };
+                    
+                    // Асфальт
+                    this.asphalt = this.add.graphics();
+                    this.asphalt.fillStyle(0x1a1a24);
+                    this.asphalt.fillRect(roadX, 0, roadW, h);
+                    this.asphalt.setDepth(0);
+                    
+                    // Бордюры
+                    this.leftBorder = this.add.graphics();
+                    this.leftBorder.lineStyle(5, 0xffaa66, 1);
+                    this.leftBorder.beginPath();
+                    this.leftBorder.moveTo(roadX, 0);
+                    this.leftBorder.lineTo(roadX, h);
+                    this.leftBorder.strokePath();
+                    
+                    this.rightBorder = this.add.graphics();
+                    this.rightBorder.lineStyle(5, 0xffaa66, 1);
+                    this.rightBorder.beginPath();
+                    this.rightBorder.moveTo(roadX + roadW, 0);
+                    this.rightBorder.lineTo(roadX + roadW, h);
+                    this.rightBorder.strokePath();
+                    
+                    // === РАЗМЕТКА — СОЗДАЁМ ПАРАМИ ===
+                    this.linesGroup = this.add.group();
+                    const lineX1 = roadX + this.laneW - 4;
+                    const lineX2 = roadX + this.laneW * 2 - 4;
+                    
+                    const linesNeeded = Math.ceil(h / CYCLE) + 4;
+                    for(let i = 0; i <= linesNeeded; i++) {
+                        const yPos = -STRIP_H + (i * CYCLE);
+                        const leftLine = this.linesGroup.create(lineX1, yPos, 'lineTex');
+                        const rightLine = this.linesGroup.create(lineX2, yPos, 'lineTex');
+                        
+                        if(leftLine) { leftLine.setDepth(2); this.physics.world.enableBody(leftLine); leftLine.body.enable = false; }
+                        if(rightLine) { rightLine.setDepth(2); this.physics.world.enableBody(rightLine); rightLine.body.enable = false; }
+                        
+                        this.linePairs.push({ left: leftLine, right: rightLine, y: yPos });
+                    }
+                    
+                    // Игрок
+                    this.player = this.physics.add.sprite(w/2, h - 115, 'playerTex');
+                    this.player.setCollideWorldBounds(true);
+                    this.player.setDepth(10);
+                    this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(roadX, 0, roadW, h));
+                    
+                    // Враги
+                    this.enemies = this.physics.add.group();
+                    this.enemies.setDepth(10);
+                    
+                    // Управление
+                    this.cursors = this.input.keyboard.createCursorKeys();
+                    this.keysAB = this.input.keyboard.addKeys({
+                        a: Phaser.Input.Keyboard.KeyCodes.A,
+                        d: Phaser.Input.Keyboard.KeyCodes.D
+                    });
+                    
+                    this.physics.add.collider(this.player, this.enemies, this.onCollision, null, this);
+                    
+                    this.spawnTimer = this.time.addEvent({
+                        delay: 850,
+                        callback: this.spawnEnemy,
+                        callbackScope: this,
+                        loop: true
+                    });
+                    
+                    this.scale.on('resize', this.onResize, this);
+                }
+                
+                updateMarkings(deltaSec) {
+                    if(!this.linePairs || !isRunning) return;
+                    const moveDist = gameSpeed * deltaSec;
+                    
+                    for(let pair of this.linePairs) {
+                        if(!pair.left || !pair.right) continue;
+                        pair.left.y += moveDist;
+                        pair.right.y += moveDist;
+                        pair.y = pair.left.y;
+                        
+                        if(pair.left.y > this.scale.height + STRIP_H) {
+                            let minY = this.scale.height;
+                            for(let p of this.linePairs) {
+                                if(p.left && p.left.y < minY) minY = p.left.y;
+                            }
+                            const newY = minY - CYCLE;
+                            pair.left.y = newY;
+                            pair.right.y = newY;
+                            pair.y = newY;
+                        }
+                    }
+                }
+                
+                spawnEnemy() {
+                    if(!isRunning || !this.roadData) return;
+                    const laneIdx = Phaser.Math.Between(0, LANES - 1);
+                    const carX = this.roadData.x + (laneIdx * this.laneW) + (this.laneW / 2);
+                    const enemy = this.enemies.create(carX, -90, 'enemyTex');
+                    if(enemy) {
+                        const speedVar = Phaser.Math.Between(-12, 12);
+                        enemy.setVelocityY(gameSpeed + speedVar);
+                        enemy.varOffset = speedVar;
+                    }
+                }
+                
+                onCollision(player, enemy) {
+                    if(!isRunning) return;
+                    this.physics.pause();
+                    isRunning = false;
+                    player.setTint(0xff6666);
+                    document.getElementById('finalScoreSpan').innerText = score;
+                    document.getElementById('gameover').style.display = 'flex';
+                }
+                
+                updateUI() {
+                    const scoreEl = document.getElementById('scoreDisplay');
+                    const speedEl = document.getElementById('speedDisplay');
+                    if(scoreEl) scoreEl.innerText = score;
+                    if(speedEl) speedEl.innerText = (gameSpeed / 310).toFixed(1);
+                }
+                
+                updateDifficulty() {
+                    if(!isRunning) return;
+                    let targetSpeed = 320 + Math.floor(score / 7) * 4;
+                    if(targetSpeed > 760) targetSpeed = 760;
+                    if(gameSpeed < targetSpeed) {
+                        gameSpeed = Math.min(targetSpeed, gameSpeed + 2);
+                    }
+                    if(this.spawnTimer) {
+                        let newDelay = Math.max(500, 850 - Math.floor(score / 7));
+                        if(this.spawnTimer.delay !== newDelay) {
+                            this.spawnTimer.remove(false);
+                            this.spawnTimer = this.time.addEvent({
+                                delay: newDelay,
+                                callback: this.spawnEnemy,
+                                callbackScope: this,
+                                loop: true
+                            });
+                        }
+                    }
+                    this.updateUI();
+                }
+                
+                onResize(gameSize) {
+                    if(!isRunning) return;
+                    const w = gameSize.width;
+                    const h = gameSize.height;
+                    const newRoadW = Math.min(w * 0.8, 500);
+                    const newRoadX = (w - newRoadW) / 2;
+                    const newLaneW = newRoadW / LANES;
+                    
+                    this.roadData = {
+                        x: newRoadX,
+                        w: newRoadW,
+                        laneW: newLaneW,
+                        leftBound: newRoadX,
+                        rightBound: newRoadX + newRoadW
+                    };
+                    
+                    this.asphalt.clear();
+                    this.asphalt.fillStyle(0x1a1a24);
+                    this.asphalt.fillRect(newRoadX, 0, newRoadW, h);
+                    
+                    this.leftBorder.clear();
+                    this.leftBorder.lineStyle(5, 0xffaa66, 1);
+                    this.leftBorder.beginPath();
+                    this.leftBorder.moveTo(newRoadX, 0);
+                    this.leftBorder.lineTo(newRoadX, h);
+                    this.leftBorder.strokePath();
+                    
+                    this.rightBorder.clear();
+                    this.rightBorder.lineStyle(5, 0xffaa66, 1);
+                    this.rightBorder.beginPath();
+                    this.rightBorder.moveTo(newRoadX + newRoadW, 0);
+                    this.rightBorder.lineTo(newRoadX + newRoadW, h);
+                    this.rightBorder.strokePath();
+                    
+                    this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(newRoadX, 0, newRoadW, h));
+                    if(this.player.x < newRoadX) this.player.x = newRoadX + 21;
+                    if(this.player.x > newRoadX + newRoadW) this.player.x = newRoadX + newRoadW - 21;
+                    
+                    const newX1 = newRoadX + newLaneW - 4;
+                    const newX2 = newRoadX + newLaneW * 2 - 4;
+                    for(let pair of this.linePairs) {
+                        if(pair.left) pair.left.x = newX1;
+                        if(pair.right) pair.right.x = newX2;
+                    }
+                }
+                
+                update(time, delta) {
+                    if(!isRunning) return;
+                    const dt = Math.min(0.033, delta / 1000);
+                    let moveDir = 0;
+                    
+                    if(this.cursors.left?.isDown || this.keysAB.a?.isDown) moveDir = -1;
+                    else if(this.cursors.right?.isDown || this.keysAB.d?.isDown) moveDir = 1;
+                    
+                    if(leftActive) moveDir = -1;
+                    else if(rightActive) moveDir = 1;
+                    
+                    this.player.x += moveDir * 620 * dt;
+                    const leftLimit = this.roadData.leftBound + 21;
+                    const rightLimit = this.roadData.rightBound - 21;
+                    if(this.player.x < leftLimit) this.player.x = leftLimit;
+                    if(this.player.x > rightLimit) this.player.x = rightLimit;
+                    
+                    this.updateMarkings(dt);
+                    
+                    let addScore = 0;
+                    this.enemies.children.iterate(e => {
+                        if(!e) return;
+                        if(e.y > this.scale.height + 120) {
+                            e.destroy();
+                            addScore += 10;
+                        }
+                    });
+                    
+                    if(addScore > 0) {
+                        score += addScore;
+                        this.updateDifficulty();
+                    }
+                    
+                    this.enemies.children.iterate(e => {
+                        if(e && isRunning) {
+                            let sp = gameSpeed + (e.varOffset || 0);
+                            if(sp < 260) sp = 260;
+                            e.setVelocityY(sp);
+                        }
+                    });
+                }
             }
-        }
+            
+            // ---------- ЗАПУСК ----------
+            function startGame() {
+                if(gameInstance) gameInstance.destroy(true);
+                gameInstance = new Phaser.Game({
+                    type: Phaser.AUTO,
+                    parent: document.body,
+                    backgroundColor: '#0a100e',
+                    scale: {
+                        mode: Phaser.Scale.RESIZE,
+                        autoCenter: Phaser.Scale.CENTER_BOTH,
+                        width: '100%',
+                        height: '100%'
+                    },
+                    physics: {
+                        default: 'arcade',
+                        arcade: { debug: false, gravity: { y: 0 } }
+                    },
+                    scene: GameScene
+                });
+                leftActive = false;
+                rightActive = false;
+            }
+            
+            // ---------- КНОПКИ ----------
+            const btnL = document.getElementById('btnLeft');
+            const btnR = document.getElementById('btnRight');
+            const restartBtn = document.getElementById('restartButton');
+            
+            if(btnL) {
+                btnL.addEventListener('mousedown', (e) => { e.preventDefault(); leftActive = true; rightActive = false; });
+                btnL.addEventListener('mouseup', () => { leftActive = false; });
+                btnL.addEventListener('mouseleave', () => { leftActive = false; });
+                btnL.addEventListener('touchstart', (e) => { e.preventDefault(); leftActive = true; rightActive = false; });
+                btnL.addEventListener('touchend', () => { leftActive = false; });
+                btnL.addEventListener('touchcancel', () => { leftActive = false; });
+            }
+            if(btnR) {
+                btnR.addEventListener('mousedown', (e) => { e.preventDefault(); rightActive = true; leftActive = false; });
+                btnR.addEventListener('mouseup', () => { rightActive = false; });
+                btnR.addEventListener('mouseleave', () => { rightActive = false; });
+                btnR.addEventListener('touchstart', (e) => { e.preventDefault(); rightActive = true; leftActive = false; });
+                btnR.addEventListener('touchend', () => { rightActive = false; });
+                btnR.addEventListener('touchcancel', () => { rightActive = false; });
+            }
+            if(restartBtn) restartBtn.addEventListener('click', () => startGame());
+            
+            startGame();
+        })();
     </script>
 </body>
 </html>
