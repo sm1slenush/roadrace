@@ -1,268 +1,394 @@
-// Базовые пропорции для логики игры (виртуальная ширина дороги)
-const VIRTUAL_WIDTH = 400;
-const VIRTUAL_HEIGHT = 600;
-const ROAD_WIDTH_RATIO = 0.75; // Дорога занимает 75% от ширины экрана
-const LANE_COUNT = 3;
+// street-racer.js
+// Полноценная гоночная игра с исправленной разметкой
 
+const LANE_COUNT = 3;
 let gameInstance = null;
-let isGameOver = false;
-let score = 0;
-let gameSpeed = 300;
+let isGameOverFlag = false;
+let currentScore = 0;
+let currentGameSpeed = 320;
+let touchLeftActive = false;
+let touchRightActive = false;
+
+// Константы для разметки – исправляем проблему слипания!
+const LINE_STRIP_HEIGHT = 70;
+const LINE_GAP = 50;
+const CYCLE_DIST = LINE_STRIP_HEIGHT + LINE_GAP; // 120px идеальный цикл
 
 class MainScene extends Phaser.Scene {
     constructor() {
         super('MainScene');
     }
-
+    
     preload() {
-        // Графика игрока (красная машина)
-        const playerGraphics = this.make.graphics();
-        playerGraphics.fillStyle(0xff0044); 
-        playerGraphics.fillRect(0, 0, 40, 70);
-        playerGraphics.fillStyle(0x333333); 
-        playerGraphics.fillRect(5, 15, 30, 15);
-        playerGraphics.fillStyle(0xffff00); 
-        playerGraphics.fillRect(5, 5, 8, 5);
-        playerGraphics.fillRect(27, 5, 8, 5);
-        playerGraphics.generateTexture('playerTex', 40, 70);
-
-        // Графика врага (синяя машина)
-        const enemyGraphics = this.make.graphics();
-        enemyGraphics.fillStyle(0x0044ff); 
-        enemyGraphics.fillRect(0, 0, 40, 70);
-        enemyGraphics.fillStyle(0x333333); 
-        enemyGraphics.fillRect(5, 45, 30, 15);
-        enemyGraphics.fillStyle(0xcc0000); 
-        enemyGraphics.fillRect(5, 60, 8, 5);
-        enemyGraphics.fillRect(27, 60, 8, 5);
-        enemyGraphics.generateTexture('enemyTex', 40, 70);
-
-        // Графика разметки
-        const lineGraphics = this.make.graphics();
-        lineGraphics.fillStyle(0xffffff);
-        lineGraphics.fillRect(0, 0, 10, 40);
-        lineGraphics.generateTexture('lineTex', 10, 40);
-    }
-
-    create() {
-        isGameOver = false;
-        score = 0;
-        gameSpeed = 300;
-        updateUI();
+        // Текстура игрока (красная машина)
+        const playerGfx = this.make.graphics();
+        playerGfx.fillStyle(0xff2255);
+        playerGfx.fillRect(0, 0, 40, 70);
+        playerGfx.fillStyle(0x222222);
+        playerGfx.fillRect(5, 18, 30, 14);
+        playerGfx.fillStyle(0xffee88);
+        playerGfx.fillRect(6, 6, 8, 6);
+        playerGfx.fillRect(26, 6, 8, 6);
+        playerGfx.fillStyle(0xaaaaaa);
+        playerGfx.fillRect(2, 62, 6, 6);
+        playerGfx.fillRect(32, 62, 6, 6);
+        playerGfx.generateTexture('playerCar', 40, 70);
         
-        const gameOverScreen = document.getElementById('game-over-screen');
-        if (gameOverScreen) gameOverScreen.style.display = 'none';
-
-        // === АДАПТАЦИЯ ПОД РАЗМЕР ЭКРАНА ===
+        // Текстура врага (синяя машина)
+        const enemyGfx = this.make.graphics();
+        enemyGfx.fillStyle(0x2288ff);
+        enemyGfx.fillRect(0, 0, 40, 70);
+        enemyGfx.fillStyle(0x111111);
+        enemyGfx.fillRect(5, 44, 30, 14);
+        enemyGfx.fillStyle(0xcc0000);
+        enemyGfx.fillRect(6, 58, 7, 6);
+        enemyGfx.fillRect(27, 58, 7, 6);
+        enemyGfx.fillStyle(0x888888);
+        enemyGfx.fillRect(2, 66, 6, 4);
+        enemyGfx.fillRect(32, 66, 6, 4);
+        enemyGfx.generateTexture('enemyCar', 40, 70);
+        
+        // Текстура линии разметки
+        const lineGfx = this.make.graphics();
+        lineGfx.fillStyle(0xffffff, 1);
+        lineGfx.fillRect(0, 0, 8, LINE_STRIP_HEIGHT);
+        lineGfx.fillStyle(0xe0e0ff, 0.6);
+        lineGfx.fillRect(1, 0, 6, LINE_STRIP_HEIGHT);
+        lineGfx.generateTexture('roadMarking', 8, LINE_STRIP_HEIGHT);
+    }
+    
+    create() {
+        isGameOverFlag = false;
+        currentScore = 0;
+        currentGameSpeed = 320;
+        this.updateUI();
+        
+        document.getElementById('game-over-screen').style.display = 'none';
+        
         const gameWidth = this.scale.width;
         const gameHeight = this.scale.height;
         
-        // Рассчитываем ширину дороги в зависимости от текущего экрана
-        const roadWidth = Math.min(gameWidth * 0.9, 800); // Максимум 800px, или 90% экрана
+        const roadWidth = Math.min(gameWidth * 0.82, 520);
         const laneWidth = roadWidth / LANE_COUNT;
         const roadX = (gameWidth - roadWidth) / 2;
-
-        // Рисуем фон дороги
-        this.roadBase = this.add.graphics();
-        this.roadBase.fillStyle(0x555555);
-        this.roadBase.fillRect(roadX, 0, roadWidth, gameHeight);
-        this.roadBase.lineStyle(4, 0xffffff);
-        this.roadBase.strokeRect(roadX, 0, roadWidth, gameHeight);
-        this.roadBase.setDepth(0);
-
-        // Сохраняем параметры дороги для использования в update/spawn
-        this.roadData = { x: roadX, width: roadWidth, laneWidth: laneWidth };
-
-        // Группа разметки
-        this.roadLines = this.physics.add.group();
-        this.roadLines.setDepth(1); 
-
-        // Спавним начальную разметку
-        for (let i = -1; i < 10; i++) {
-            this.spawnRoadLine(i * 100);
-        }
-
-        // Создаем игрока по центру дороги внизу
-        this.player = this.physics.add.sprite(gameWidth / 2, gameHeight - 150, 'playerTex');
-        this.player.setCollideWorldBounds(true);
         
-        // Ограничиваем движение игрока только дорогой
+        this.roadParams = {
+            x: roadX,
+            width: roadWidth,
+            laneWidth: laneWidth,
+            leftEdge: roadX,
+            rightEdge: roadX + roadWidth
+        };
+        
+        // Асфальт
+        this.roadBg = this.add.graphics();
+        this.roadBg.fillStyle(0x1e1e2a);
+        this.roadBg.fillRect(roadX, 0, roadWidth, gameHeight);
+        this.roadBg.setDepth(0);
+        
+        // Асфальтовая текстура
+        this.roadTexture = this.add.graphics();
+        this.roadTexture.fillStyle(0x2c2c3a, 0.4);
+        for(let i = 0; i < 180; i++) {
+            let rx = roadX + Math.random() * roadWidth;
+            let ry = Math.random() * gameHeight;
+            this.roadTexture.fillRect(rx, ry, 2, 2);
+        }
+        this.roadTexture.setDepth(0);
+        
+        // Бордюры
+        this.leftBound = this.add.graphics();
+        this.leftBound.lineStyle(6, 0xffdd77, 1);
+        this.leftBound.beginPath();
+        this.leftBound.moveTo(roadX, 0);
+        this.leftBound.lineTo(roadX, gameHeight);
+        this.leftBound.strokePath();
+        this.leftBound.setDepth(1);
+        
+        this.rightBound = this.add.graphics();
+        this.rightBound.lineStyle(6, 0xffdd77, 1);
+        this.rightBound.beginPath();
+        this.rightBound.moveTo(roadX + roadWidth, 0);
+        this.rightBound.lineTo(roadX + roadWidth, gameHeight);
+        this.rightBound.strokePath();
+        this.rightBound.setDepth(1);
+        
+        // Группа для линий разметки
+        this.roadLinesGroup = this.add.group();
+        
+        const startYOffset = -LINE_STRIP_HEIGHT;
+        const maxLinesNeeded = Math.ceil(gameHeight / CYCLE_DIST) + 4;
+        for(let i = 0; i <= maxLinesNeeded; i++) {
+            let yPos = startYOffset + (i * CYCLE_DIST);
+            this.createLinePair(yPos);
+        }
+        
+        // Игрок
+        const playerStartX = gameWidth / 2;
+        this.player = this.physics.add.sprite(playerStartX, gameHeight - 110, 'playerCar');
+        this.player.setCollideWorldBounds(true);
+        this.player.setDepth(12);
         this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(roadX, 0, roadWidth, gameHeight));
-        this.player.setDepth(10);
-
-        // Группа врагов
+        
+        // Враги
         this.enemies = this.physics.add.group();
-        this.enemies.setDepth(10);
-
+        this.enemies.setDepth(12);
+        
         // Управление
         this.cursors = this.input.keyboard.createCursorKeys();
-        // Добавляем управление A/D и стрелками
-        this.keys = this.input.keyboard.addKeys({
+        this.keyMap = this.input.keyboard.addKeys({
             left: Phaser.Input.Keyboard.KeyCodes.LEFT,
             right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
             a: Phaser.Input.Keyboard.KeyCodes.A,
             d: Phaser.Input.Keyboard.KeyCodes.D
         });
-
-        this.physics.add.collider(this.player, this.enemies, this.hitEnemy, null, this);
-
-        // Таймер спавна врагов
-        this.enemyTimer = this.time.addEvent({
-            delay: 1000,
-            callback: this.spawnEnemy,
+        
+        // Коллизия
+        this.physics.add.collider(this.player, this.enemies, this.onCrash, null, this);
+        
+        // Спавн врагов
+        this.spawnTimer = this.time.addEvent({
+            delay: 880,
+            callback: this.spawnOpponent,
             callbackScope: this,
             loop: true
         });
         
-        // Обработка изменения размера окна (если пользователь крутит браузер)
-        this.scale.on('resize', this.handleResize, this);
+        this.scale.on('resize', this.handleWindowResize, this);
     }
-
-    handleResize(gameSize) {
-        // Перерисовываем дорогу при изменении размера окна
-        const gameWidth = gameSize.width;
-        const gameHeight = gameSize.height;
-        const roadWidth = Math.min(gameWidth * 0.9, 800);
-        const roadX = (gameWidth - roadWidth) / 2;
-        
-        this.roadBase.clear();
-        this.roadBase.fillStyle(0x555555);
-        this.roadBase.fillRect(roadX, 0, roadWidth, gameHeight);
-        this.roadBase.lineStyle(4, 0xffffff);
-        this.roadBase.strokeRect(roadX, 0, roadWidth, gameHeight);
-
-        this.roadData = { x: roadX, width: roadWidth, laneWidth: roadWidth / LANE_COUNT };
-        
-        // Обновляем границы игрока
-        this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(roadX, 0, roadWidth, gameHeight));
-        // Центрируем игрока, если он оказался за пределами новой дороги
-        if (this.player.x < roadX || this.player.x > roadX + roadWidth) {
-            this.player.x = gameWidth / 2;
-        }
-        this.player.y = gameHeight - 150;
-    }
-
-    spawnRoadLine(yPos) {
-        if (!this.roadData) return;
-        const { x: roadX, laneWidth } = this.roadData;
-        
+    
+    createLinePair(yPos) {
+        if(!this.roadParams) return;
+        const { x: roadX, laneWidth } = this.roadParams;
         const line1X = roadX + laneWidth;
         const line2X = roadX + laneWidth * 2;
-
-        let l1 = this.roadLines.create(line1X - 5, yPos, 'lineTex');
-        let l2 = this.roadLines.create(line2X - 5, yPos, 'lineTex');
         
-        // Отключаем физику для разметки, чтобы не сталкивалась
-        if (l1) l1.body.enable = false;
-        if (l2) l2.body.enable = false;
-    }
-
-    spawnEnemy() {
-        if (isGameOver || !this.roadData) return;
+        const mark1 = this.roadLinesGroup.create(line1X - 4, yPos, 'roadMarking');
+        const mark2 = this.roadLinesGroup.create(line2X - 4, yPos, 'roadMarking');
         
-        const { x: roadX, laneWidth } = this.roadData;
-        const lane = Phaser.Math.Between(0, LANE_COUNT - 1);
-        const laneX = roadX + (lane * laneWidth) + (laneWidth / 2);
-
-        const enemy = this.enemies.create(laneX, -100, 'enemyTex');
-        if (enemy) {
-            enemy.setVelocityY(gameSpeed);
-            enemy.speedOffset = Phaser.Math.Between(-20, 20);
-        }
+        if(mark1) { mark1.setDepth(2); this.physics.world.enableBody(mark1); mark1.body.enable = false; }
+        if(mark2) { mark2.setDepth(2); this.physics.world.enableBody(mark2); mark2.body.enable = false; }
     }
-
-    update(time, delta) {
-        if (isGameOver) return;
-
-        const deltaTimeInSeconds = delta / 1000;
-        const moveSpeed = 600; // Чуть быстрее для больших экранов
-
-        // Управление
-        if (this.cursors.left.isDown || this.keys.a.isDown) {
-            this.player.x -= moveSpeed * deltaTimeInSeconds;
-        } else if (this.cursors.right.isDown || this.keys.d.isDown) {
-            this.player.x += moveSpeed * deltaTimeInSeconds;
-        }
-
-        // Движение разметки
-        this.roadLines.children.iterate((line) => {
-            if (line) {
-                line.y += gameSpeed * deltaTimeInSeconds;
-                if (line.y > this.scale.height + 50) {
-                    line.y = -50;
-                }
-            }
-        });
-
-        // Движение врагов
-        this.enemies.children.iterate((enemy) => {
-            if (enemy) {
-                enemy.setVelocityY(gameSpeed + enemy.speedOffset);
-                
-                if (enemy.y > this.scale.height + 100) {
-                    enemy.destroy();
-                    score += 10;
-                    
-                    if (score % 100 === 0) {
-                        gameSpeed += 50;
-                        this.enemyTimer.delay = Math.max(500, 1500 - (score / 2));
-                    }
-                    updateUI();
-                }
+    
+    updateRoadMarkings(deltaTime) {
+        if(!this.roadLinesGroup || isGameOverFlag) return;
+        const deltaMove = currentGameSpeed * deltaTime;
+        
+        this.roadLinesGroup.children.iterate(marking => {
+            if(!marking) return;
+            marking.y += deltaMove;
+            if(marking.y > this.scale.height + LINE_STRIP_HEIGHT) {
+                let highestY = this.scale.height;
+                this.roadLinesGroup.children.iterate(other => {
+                    if(other && other.y < highestY) highestY = other.y;
+                });
+                let newY = highestY - CYCLE_DIST;
+                marking.y = newY - LINE_STRIP_HEIGHT;
             }
         });
     }
-
-    hitEnemy(player, enemy) {
+    
+    spawnOpponent() {
+        if(isGameOverFlag || !this.roadParams) return;
+        const { x: roadX, laneWidth } = this.roadParams;
+        const randomLane = Phaser.Math.Between(0, LANE_COUNT - 1);
+        const carX = roadX + (randomLane * laneWidth) + (laneWidth / 2);
+        const enemy = this.enemies.create(carX, -85, 'enemyCar');
+        if(enemy) {
+            let speedVariant = Phaser.Math.Between(-18, 18);
+            enemy.setVelocityY(currentGameSpeed + speedVariant);
+            enemy.customSpeedBonus = speedVariant;
+        }
+    }
+    
+    onCrash(player, enemy) {
+        if(isGameOverFlag) return;
         this.physics.pause();
-        isGameOver = true;
-        player.setTint(0xff0000);
+        isGameOverFlag = true;
+        player.setTint(0xff6666);
+        player.setAngle(15);
         
-        const finalScoreEl = document.getElementById('finalScoreEl');
-        const gameOverScreen = document.getElementById('game-over-screen');
+        document.getElementById('finalScoreEl').innerText = currentScore;
+        document.getElementById('game-over-screen').style.display = 'flex';
+    }
+    
+    updateUI() {
+        const scoreSpan = document.getElementById('scoreEl');
+        const speedSpan = document.getElementById('speedEl');
+        if(scoreSpan) scoreSpan.innerText = currentScore;
+        if(speedSpan) speedSpan.innerText = (currentGameSpeed / 300).toFixed(1) + 'x';
+    }
+    
+    handleWindowResize(gameSize) {
+        if(isGameOverFlag) return;
+        const w = gameSize.width;
+        const h = gameSize.height;
+        const newRoadWidth = Math.min(w * 0.82, 520);
+        const newRoadX = (w - newRoadWidth) / 2;
+        const newLaneWidth = newRoadWidth / LANE_COUNT;
         
-        if (finalScoreEl) finalScoreEl.innerText = score;
-        if (gameOverScreen) gameOverScreen.style.display = 'flex';
+        this.roadParams = {
+            x: newRoadX,
+            width: newRoadWidth,
+            laneWidth: newLaneWidth,
+            leftEdge: newRoadX,
+            rightEdge: newRoadX + newRoadWidth
+        };
+        
+        this.roadBg.clear();
+        this.roadBg.fillStyle(0x1e1e2a);
+        this.roadBg.fillRect(newRoadX, 0, newRoadWidth, h);
+        
+        this.leftBound.clear();
+        this.leftBound.lineStyle(6, 0xffdd77, 1);
+        this.leftBound.beginPath();
+        this.leftBound.moveTo(newRoadX, 0);
+        this.leftBound.lineTo(newRoadX, h);
+        this.leftBound.strokePath();
+        
+        this.rightBound.clear();
+        this.rightBound.lineStyle(6, 0xffdd77, 1);
+        this.rightBound.beginPath();
+        this.rightBound.moveTo(newRoadX + newRoadWidth, 0);
+        this.rightBound.lineTo(newRoadX + newRoadWidth, h);
+        this.rightBound.strokePath();
+        
+        this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(newRoadX, 0, newRoadWidth, h));
+        if(this.player.x < newRoadX) this.player.x = newRoadX + 20;
+        if(this.player.x > newRoadX + newRoadWidth) this.player.x = newRoadX + newRoadWidth - 20;
+        
+        this.roadLinesGroup.children.iterate(mark => {
+            if(!mark) return;
+            const idx = this.roadLinesGroup.getChildren().indexOf(mark);
+            const linePos = (idx % 2 === 0) ? newRoadX + newLaneWidth : newRoadX + newLaneWidth * 2;
+            mark.x = linePos - 4;
+        });
+    }
+    
+    updateScoreAndDifficulty() {
+        if(this.spawnTimer && !isGameOverFlag) {
+            let newDelay = Math.max(520, 880 - Math.floor(currentScore / 8));
+            if(this.spawnTimer.delay !== newDelay) {
+                this.spawnTimer.remove(false);
+                this.spawnTimer = this.time.addEvent({
+                    delay: newDelay,
+                    callback: this.spawnOpponent,
+                    callbackScope: this,
+                    loop: true
+                });
+            }
+        }
+    }
+    
+    update(time, delta) {
+        if(isGameOverFlag) return;
+        
+        const dtSec = Math.min(0.033, delta / 1000);
+        const playerMoveSpeed = 620;
+        let horizontal = 0;
+        
+        if(this.cursors.left?.isDown || this.keyMap.left?.isDown || this.keyMap.a?.isDown) horizontal = -1;
+        else if(this.cursors.right?.isDown || this.keyMap.right?.isDown || this.keyMap.d?.isDown) horizontal = 1;
+        
+        if(touchLeftActive) horizontal = -1;
+        if(touchRightActive) horizontal = 1;
+        
+        this.player.x += horizontal * playerMoveSpeed * dtSec;
+        
+        const roadLeft = this.roadParams.leftEdge;
+        const roadRight = this.roadParams.rightEdge;
+        if(this.player.x - 20 < roadLeft) this.player.x = roadLeft + 20;
+        if(this.player.x + 20 > roadRight) this.player.x = roadRight - 20;
+        
+        this.updateRoadMarkings(dtSec);
+        
+        let scoreGained = 0;
+        this.enemies.children.iterate(enemy => {
+            if(!enemy) return;
+            if(enemy.y > this.scale.height + 120) {
+                enemy.destroy();
+                scoreGained += 10;
+            }
+        });
+        
+        if(scoreGained > 0) {
+            currentScore += scoreGained;
+            let targetSpeed = 320 + Math.floor(currentScore / 7) * 6;
+            if(targetSpeed > 760) targetSpeed = 760;
+            if(currentGameSpeed < targetSpeed) {
+                currentGameSpeed = Math.min(targetSpeed, currentGameSpeed + 2);
+            }
+            this.updateScoreAndDifficulty();
+            this.updateUI();
+        }
+        
+        this.enemies.children.iterate(enemy => {
+            if(enemy && !isGameOverFlag) {
+                let baseSpeed = currentGameSpeed + (enemy.customSpeedBonus || 0);
+                if(baseSpeed < 200) baseSpeed = 260;
+                enemy.setVelocityY(baseSpeed);
+            }
+        });
     }
 }
 
-const config = {
+// Конфигурация игры
+const gameConfig = {
     type: Phaser.AUTO,
-    // Устанавливаем начальный размер, но Scale Manager растянет его
-    width: 800, 
-    height: 600,
-    parent: document.body, // Привязываем к body
-    backgroundColor: '#222',
+    parent: document.body,
+    backgroundColor: '#0a0c12',
     scale: {
-        mode: Phaser.Scale.FIT, // Самое важное: подстраивает игру под размер экрана
-        autoCenter: Phaser.Scale.CENTER_BOTH, // Центрирует, если остаются поля
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
         width: '100%',
         height: '100%'
     },
     physics: {
         default: 'arcade',
-        arcade: { debug: false }
+        arcade: { debug: false, gravity: { y: 0 } }
     },
     scene: MainScene
 };
 
-function startGame() {
-    if (gameInstance) {
+// Инициализация и управление
+function initGame() {
+    if(gameInstance) {
         gameInstance.destroy(true);
     }
-    gameInstance = new Phaser.Game(config);
+    gameInstance = new Phaser.Game(gameConfig);
+    touchLeftActive = false;
+    touchRightActive = false;
 }
 
-function updateUI() {
-    const scoreEl = document.getElementById('scoreEl');
-    const speedEl = document.getElementById('speedEl');
-    if (scoreEl) scoreEl.innerText = score;
-    if (speedEl) speedEl.innerText = (gameSpeed / 300).toFixed(1) + 'x';
-}
-
-window.restartGame = function() {
-    startGame();
-};
-
-// Запуск при загрузке
-startGame();
+// Подключение к DOM (вызывать после загрузки страницы)
+document.addEventListener('DOMContentLoaded', () => {
+    initGame();
+    
+    const leftButton = document.getElementById('leftBtn');
+    const rightButton = document.getElementById('rightBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    
+    if(leftButton) {
+        const activateLeft = (e) => { if(e) e.preventDefault(); touchLeftActive = true; touchRightActive = false; };
+        const deactivateLeft = (e) => { if(e) e.preventDefault(); touchLeftActive = false; };
+        leftButton.addEventListener('touchstart', activateLeft, {passive: false});
+        leftButton.addEventListener('touchend', deactivateLeft);
+        leftButton.addEventListener('touchcancel', deactivateLeft);
+        leftButton.addEventListener('mousedown', activateLeft);
+        leftButton.addEventListener('mouseup', deactivateLeft);
+        leftButton.addEventListener('mouseleave', deactivateLeft);
+    }
+    
+    if(rightButton) {
+        const activateRight = (e) => { if(e) e.preventDefault(); touchRightActive = true; touchLeftActive = false; };
+        const deactivateRight = (e) => { if(e) e.preventDefault(); touchRightActive = false; };
+        rightButton.addEventListener('touchstart', activateRight, {passive: false});
+        rightButton.addEventListener('touchend', deactivateRight);
+        rightButton.addEventListener('touchcancel', deactivateRight);
+        rightButton.addEventListener('mousedown', activateRight);
+        rightButton.addEventListener('mouseup', deactivateRight);
+        rightButton.addEventListener('mouseleave', deactivateRight);
+    }
+    
+    if(restartBtn) restartBtn.addEventListener('click', () => initGame());
+});
